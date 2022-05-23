@@ -80,10 +80,12 @@ def wikiMe(text=False):
     primer = 'http://en.wikipedia.org/wiki/'
     if text:
        unformat = input('What do you want know about? \n').replace(' ', '_')
-       queryTerm = unformat.lower()
+       query = unformat.lower()
+       queryTerm = re.sub(r'([^\s])\s([^\s])', r'\1_\2', query)
     if text == False:
         speakText('what do you want to know about', 1, '', True, False)
-        queryTerm = speechToText()
+        query = speechToText()
+        queryTerm = re.sub(r'([^\s])\s([^\s])', r'\1_\2', query)
     fullUrl = primer + queryTerm
     # print(fullUrl)
     hasRef = webScoop(fullUrl, 'p', show=False)
