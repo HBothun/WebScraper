@@ -1,14 +1,14 @@
 from bs4 import BeautifulSoup
 from urllib.request import urlopen, Request
 from pydub import AudioSegment
-# import pyttsx3
-# import vlc
-# from gtts import gTTS
-# import time
-import speech_recognition as sr
+from pydub.playback import play
 import re
+import pyaudio
+import wave
 from os import path
+from pvrecorder import PvRecorder
 import pyttsx3
+import whisper
 
 def convertAudio(srcType, desType, inFile, outFile):
     # files
@@ -26,37 +26,58 @@ def speakText(text, voice, saveName, speak=True, saveToFile=True):
     if saveToFile == True:
         engine.save_to_file(text, saveName)
     if speak == True:
+
         engine.say(text)
     engine.runAndWait()
     engine.stop()
 
-# def speakText(text, saveName, speak=True):    
-#     spokenContent = gTTS(text)
-#     spokenContent.save(saveName)
-#     vlc_instance = vlc.Instance()
-#     player = vlc_instance.media_player_new()
-#     media = vlc_instance.media_new(saveName)
-#     player.set_media(media)        
-#     if speak == True:  
-#         player.play()
-#         time.sleep(1)
-#         duration = player.get_length()
-#         time.sleep(duration//1000)
-#     return
-
 def speechToText():
-    r = sr.Recognizer()
-    with sr.Microphone() as source:
-        print("Say something!")
-        audio = r.listen(source)
-        text = r.recognize_google(audio)
-    try:
-        print("Google Speech Recognition thinks you said " + r.recognize_google(audio))
-    except sr.UnknownValueError:
-        print("Google Speech Recognition could not understand audio")
-    except sr.RequestError as e:
-        print("Could not request results from Google Speech Recognition service; {0}".format(e))
-    return text
+    chunk = 1024  # Record in chunks of 1024 samples
+    sample_format = pyaudio.paInt16  # 16 bits per sample
+    channels = 2
+    fs = 44100  # Record at 44100 samples per second
+    seconds = 5
+    filename = "output.wav"
+
+    p = pyaudio.PyAudio()  # Create an interface to PortAudio
+
+    print('Recording')
+
+    stream = p.open(format=sample_format,
+                    channels=channels,
+                    rate=fs,
+                    frames_per_buffer=chunk,
+                    input=True)
+
+    frames = []  # Initialize array to store frames
+
+    # Store data in chunks for 5 seconds
+    for i in range(0, int(fs / chunk * seconds)):
+        data = stream.read(chunk)
+        frames.append(data)
+
+    # Stop and close the stream 
+    stream.stop_stream()
+    stream.close()
+    # Terminate the PortAudio interface
+    p.terminate()
+
+    print('Finished recording')
+
+    # Save the recorded data as a WAV file
+    wf = wave.open(filename, 'wb')
+    wf.setnchannels(channels)
+    wf.setsampwidth(p.get_sample_size(sample_format))
+    wf.setframerate(fs)
+    wf.writeframes(b''.join(frames))
+    wf.close()
+
+    model = whisper.load_model("base")
+    result = model.transcribe("output.wav")
+    print(result["text"])
+    return result["text"]
+
+
 
 def webScoop(webAdress, contentSweep, show=True):
     output = str()
@@ -77,7 +98,7 @@ def webScoop(webAdress, contentSweep, show=True):
     return output
 
 def wikiMe(text=False):
-    primer = 'http://en.wikipedia.org/wiki/'
+    primer = 'https://en.wikipedia.org/wiki/'
     if text:
        unformat = input('What do you want know about? \n').replace(' ', '_')
        query = unformat.lower()
@@ -85,9 +106,11 @@ def wikiMe(text=False):
     if text == False:
         speakText('what do you want to know about', 1, '', True, False)
         query = speechToText()
-        queryTerm = re.sub(r'([^\s])\s([^\s])', r'\1_\2', query)
+        #queryTerm = re.sub(r'([^\s])\s([^\s])', r'\1_\2', query)
+        queryWithSpace = query.replace(' ','')
+        queryTerm = queryWithSpace.replace('.','')
     fullUrl = primer + queryTerm
-    # print(fullUrl)
+    print(fullUrl)
     hasRef = webScoop(fullUrl, 'p', show=False)
     hasPronounce = re.sub('\[(.*?)\]', '', hasRef)
     hasDubPar = re.sub('\/(.*?)\/', '', hasPronounce)    
@@ -107,16 +130,23 @@ def wikiMe(text=False):
         print(cleanText)
     elif text == False:
         speakText('Do you want to save?', 1, '', True, False)
-        choice = speechToText()
-        if choice == 'yes':
-            save = True
-        elif choice == 'no':
-            save = False 
-        if save:
+        print("please say yes or no")
+        response = speechToText()
+        responseNoPunct = re.sub('[^\w]', '', response)
+        choice = responseNoPunct.lower()
+        print(choice)
+        if choice == 'yes':   
             speakText('What would you like to call it:', 1, '', True, False)
-            name = speechToText() + '.wav'
-            speakText(cleanText, 1, name, True, True)
-        elif save == False:
+            badName = speechToText()
+            okName = badName.replace(' ', '_')
+            goodName = re.sub('[^\w]','',okName)
+            textName = goodName + '.txt'     
+            wavName = goodName + '.wav'     
+            file = open(textName, "w", encoding='utf-8')
+            file.write(cleanText)
+            file.close() 
+            speakText(cleanText, 1, wavName, True, True)
+        elif choice == 'no':
             speakText(cleanText, 1, '', True, False)
 
 wikiMe()
